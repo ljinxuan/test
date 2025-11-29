@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实时金价监测平台 - 深色数据看板</title>
+  <!-- Tailwind CSS v3 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <!-- 统一的 Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#FFD700',
+            secondary: '#2C3E50',
+            success: '#22C55E',
+            danger: '#EF4444',
+            warning: '#F59E0B',
+            info: '#3B82F6',
+            dark: {
+              100: '#1E293B',
+              200: '#172033',
+              300: '#0F172A',
+              400: '#0B1120',
+              500: '#070D19'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .price-up {
+        @apply text-danger transition-all duration-500 transform;
+      }
+      .price-down {
+        @apply text-success transition-all duration-500 transform;
+      }
+      .price-flash-up {
+        @apply bg-danger/10;
+      }
+      .price-flash-down {
+        @apply bg-success/10;
+      }
+      .card-hover {
+        @apply hover:shadow-lg transition-shadow duration-300;
+      }
+      .gold-gradient {
+        @apply bg-gradient-to-r from-yellow-400 to-amber-500;
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .card-border {
+        @apply border border-gray-700;
+      }
+      .grid-bg {
+        background-image: 
+          linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+    }
+
+    /* 价格变动动画 */
+    @keyframes priceUp {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    
+    @keyframes priceDown {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(5px); }
+    }
+    
+    .price-change-up {
+      animation: priceUp 0.5s ease-in-out;
+    }
+    
+    .price-change-down {
+      animation: priceDown 0.5s ease-in-out;
+    }
+    
+    /* 自定义滚动条 */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #1E293B;
+      border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #3B82F6;
+      border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #60A5FA;
+    }
+    
+    /* 背景动效 */
+    .bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      opacity: 0.2;
+    }
+    
+    /* 折线式设计风格 */
+    .sharp-card {
+      border-radius: 0 !important;
+      border-left: 2px solid #3B82F6;
+      border-top: 2px solid #3B82F6;
+      border-right: 0;
+      border-bottom: 0;
+      position: relative;
+    }
+    
+    .sharp-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 12px;
+      height: 12px;
+      border-right: 2px solid #3B82F6;
+      border-bottom: 2px solid #3B82F6;
+    }
+    
+    /* 数据卡片悬停效果 */
+    .data-card {
+      transition: all 0.3s ease;
+    }
+    
+    .data-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.1), 0 8px 10px -6px rgba(59, 130, 246, 0.1);
+    }
+    
+    /* 表格样式 */
+    .highlight-text {
+      background: linear-gradient(90deg, #3B82F6, #60A5FA);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    
+    /* 表格样式 */
+    .dark-table th {
+      background-color: rgba(59, 130, 246, 0.1);
+      color: #93C5FD;
+      font-weight: 500;
+    }
+    
+    .dark-table tr:nth-child(even) {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+    
+    .dark-table tr:hover {
+      background-color: rgba(59, 130, 246, 0.05);
+    }
+    
+    .bank-row {
+      background-color: rgba(59, 130, 246, 0.05) !important;
+    }
+    
+    /* 渐变边框 */
+    .gradient-border {
+      position: relative;
+      border-radius: 0;
+    }
+    
+    .gradient-border::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border: 1px solid transparent;
+      border-image: linear-gradient(45deg, #3B82F6, #FFD700) 1;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-dark-400 text-gray-200 min-h-screen grid-bg">
+  <!-- 背景图 -->
+  <div class="fixed inset-0 z-[-2] opacity-20 overflow-hidden">
+    <img src="https://p3-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/rc/pc/super_tool/89b173cad8414fcda62e1c0bd4779e21~tplv-a9rns2rl98-image.image?rcl=202510291323594DD4C5DD821BAE5FB234&rk3s=8e244e95&rrcfp=f06b921b&x-expires=1764307483&x-signature=XNv6SM6vGtnpm5KWUgtTBvYsxv8%3D" 
+         alt="背景" class="w-full h-full object-cover">
+  </div>
+  
+  <!-- 背景动画 -->
+  <div id="particleBackground" class="bg-animation"></div>
+
+  <!-- 顶部导航栏 -->
+  <header class="bg-dark-300 bg-opacity-80 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-50">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <i class="fa fa-line-chart text-primary text-2xl"></i>
+        <h1 class="text-xl md:text-2xl font-bold text-white">实时金价监测平台</h1>
+      </div>
+      
+      <div class="flex items-center space-x-4">
+        <div class="hidden md:flex items-center space-x-2 text-sm text-gray-400">
+          <span id="last-update-time">最后更新: 2025-10-29 10:56:27</span>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <button id="refresh-btn" class="flex items-center space-x-1 px-3 py-1.5 bg-info text-white rounded-none hover:bg-blue-600 transition-colors border border-blue-500">
+            <i class="fa fa-refresh"></i>
+            <span class="hidden md:inline">刷新</span>
+          </button>
+          
+          <div class="relative">
+            <button id="settings-btn" class="p-1.5 text-gray-400 hover:text-primary rounded-none hover:bg-dark-200 transition-colors">
+              <i class="fa fa-cog"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="container mx-auto px-4 py-6">
+    <!-- 市场概览 -->
+    <section class="mb-8">
+      <div class="flex justify justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white flex items-center">
+          <i class="fa fa-globe mr-2 text-info"></i>
+          市场概览
+        </h2>
+        <div class="flex items-center space-x-2 text-sm">
+          <span class="text-gray-400">自动刷新:</span>
+          <label class="inline-flex items items items-center cursor-pointer">
+            <input type="checkbox" id="auto-refresh-toggle" class="sr-only peer" checked="">
+            <div class="relative w-11 h-6 bg-dark-100 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-500/30 rounded-none peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-700 after:border after:rounded-none after:h-5 after:w-5 after:transition-all peer-checked:bg-info"></div>
+            <span class="ml-2 text-gray-300 peer-checked:text-info">开启</span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- 国内黄金T+D -->
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card data-card">
+          <div class="flex justify justify-between items-start mb-2">
+            <div>
+              <h3 class="text-lg font-semibold text-white">黄金T+D</h3>
+              <p class="text-xs text-gray-400">上海黄金交易所</p>
+            </div>
+            <span class="px-2 py-1 bg-primary/10 text-primary text-xs">国内</span>
+          </div>
+          
+          <div class="flex items-end justify-between mb-4">
+            <div>
+              <div class="flex items-baseline">
+                <span id="au-td-price" class="text-3xl font-bold text-white">907.22</span>
+                <span class="ml-1 text-lg text-gray-300">元/克</span>
+              </div>
+              <div class="flex items-center mt-1">
+                <span id="au-td-change" class="text-danger flex items-center">
+                  <i class="fa fa-caret-up mr-1"></i>
+                  <span>10.53</span>
+                </span>
+                <span id="au-td-change-percent" class="text-danger ml-2">+1.17%</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">今日开盘</div>
+              <div class="text-sm font-medium text-gray-300">895.80</div>
+            </div>
+          </div>
+          
+          <div class="flex justify-between text-xs text-gray-400">
+            <div>
+              <div>最高价</div>
+              <div id="au-td-high" class="font-medium text-white">908.05</div>
+            </div>
+            <div>
+              <div>最低价</div>
+              <div id="au-td-low" class="font-medium text-white">890.40</div>
+            </div>
+            <div>
+              <div>昨结算</div>
+              <div class="font-medium text-white">896.69</div>
+            </div>
+            <div>
+              <div>更新时间</div>
+              <div id="au-td-time" class="font-medium text-white">10:56:27</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 伦敦金 -->
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card data-card">
+          <div class="flex justify-between items-start mb-2">
+            <div>
+              <h3 class="text-lg font-semibold text-white">伦敦金</h3>
+              <p class="text-xs text-gray-400">伦敦金银市场协会</p>
+            </div>
+            <span class="px-2 py-1 bg-info/10 text-info text-xs">国际</span>
+          </div>
+          
+          <div class="flex items-end justify-between mb-4">
+            <div>
+              <div class="flex items-baseline">
+                <span id="london-gold-price" class="text-3xl font-bold text-white">3963.21</span>
+                <span class="ml-1 text-lg text-gray-300">元/克</span>
+              </div>
+              <div class="flex items-center mt-1">
+                <span id="london-gold-change" class="text-danger flex items-center">
+                  <i class="fa fa-caret-up mr-1"></i>
+                  <span>9.77</span>
+                </span>
+                <span id="london-gold-change-percent" class="text-danger ml-2">+0.25%</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">今日开盘</div>
+              <div class="text-sm font-medium text-gray-300">3955.33</div>
+            </div>
+          </div>
+          
+          <div class="flex justify-between text-xs text-gray-400">
+            <div>
+              <div>最高价</div>
+              <div id="london-gold-high" class="font-medium medium text-white">3968.82</div>
+            </div>
+            <div>
+              <div>最低价</div>
+              <div id="london-gold-low" class="font-medium text-white">3916.56</div>
+            </div>
+            <div>
+              <div>美元/盎司</div>
+              <div id="london-gold-usd" class="font-medium text-white">2102.50</div>
+            </div>
+            <div>
+              <div>更新时间</div>
+              <div id="london-gold-time" class="font-medium text-white">08:12:00</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 黄金ETF持仓 -->
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card data-card">
+          <div class="flex justify-between items-start mb-2">
+            <div>
+              <h3 class="text-lg font-semibold text-white">黄金ETF持仓</h3>
+              <p class="text-xs text-gray-400">SPDR Gold Shares</p>
+            </div>
+            <span class="px-2 py-1 bg-warning/10 text-warning text-xs">持仓</span>
+          </div>
+          
+          <div class="flex items-end justify-between mb-4">
+            <div>
+              <div class="flex items-baseline">
+                <span id="etf-holdings" class="text-3xl font-bold text-white">912.5</span>
+                <span class="ml-1 text-lg text-gray-300">吨</span>
+              </div>
+              <div class="flex items-center mt-1">
+                <span id="etf-change" class="text-danger flex items-center">
+                  <i class="fa fa-caret-up mr-1"></i>
+                  <span>2.3</span>
+                </span>
+                <span class="text-gray-400 ml-2">吨/较上日</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">持仓价值</div>
+              <div class="text-sm font-medium text-gray-300">325.6亿美元</div>
+            </div>
+          </div>
+          
+          <div class="h-16">
+            <canvas id="etf-mini-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 价格走势图 -->
+    <section class="mb-8">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white flex items-center">
+          <i class="fa fa-area-chart mr-2 text-info"></i>
+          价格走势
+        </h2>
+        <div class="flex space-x-2">
+          <button class="time-filter px-3 py-1 text-sm rounded-none bg-info text-white border border-blue-500" data-period="day">日</button>
+          <button class="time-filter px-3 py-1 text-sm rounded-none bg-dark-100 text-gray-300 border border-gray-700" data-period="week">周</button>
+          <button class="time-filter px-3 py-1 text-sm rounded-none bg-dark-100 text-gray-300 border border-gray-700" data-period="month">月</button>
+          <button class="time-filter px-3 py-1 text-sm rounded-none bg-dark-100 text-gray-300 border border-gray-700" data-period="year">年</button>
+        </div>
+      </div>
+      
+      <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card">
+        <div class="flex flex-wrap justify-between items-center mb-4">
+          <div class="flex space-x-4 mb-2 sm:mb-0">
+            <div class="flex items-center space-x-4">
+            <div class="flex items-center">
+              <span class="w-3 h-3 rounded-full bg-primary mr-2"></span>
+              <span class="text-sm text-gray-300">黄金T+D</span>
+            </div>
+            <div class="flex items-center">
+              <span class="w-3 h-3 rounded-full bg-info mr-2"></span>
+              <span class="text-sm text-gray-300">伦敦金</span>
+            </div>
+            
+            <div class="ml-auto flex items-center space-x-2">
+              <span class="text-sm text-gray-400">显示:</span>
+              <button id="btn-auTD" class="px-3 py-1 bg-primary text-dark-400 rounded-none text-sm font-medium border border-amber-500">黄金T+D</button>
+              <button id="btn-londonGold" class="px-3 py-1 bg-dark-100 text-gray-300 rounded-none text-sm font-medium border border-gray-700">伦敦金</button>
+            </div>
+          </div>
+
+          </div>
+          
+          <div class="text-sm text-gray-400">
+            <span id="chart-update-time">最后更新: 2025-10-29 10:56:27</span>
+          </div>
+        </div>
+        
+        <div class="h-80">
+          <canvas id="price-chart"></canvas>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 实物黄金价格 -->
+    <section class="mb-8">
+      <h2 class="text-xl font-bold text-white mb-4 flex items-center">
+        <i class="fa fa-gem mr-2 text-info"></i>
+        实物黄金价格
+      </h2>
+      
+      <div class="overflow-x-auto">
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm sharp-card">
+          <table class="min-w-full dark-table">
+            <thead>
+              <tr class="text-gray-400 text-left text-sm">
+                <th class="py-3 px-4">品牌</th>
+                <th class="py-3 px-4">最新价(元/克)</th>
+                <th class="py-3 px-4">涨跌</th>
+                <th class="py-3 px-4">涨跌幅</th>
+                <th class="py-3 px-4">更新时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b border-gray-700">
+                <td class="py-3 px-4 font-medium text-white">周大福</td>
+                <td class="py-3 px-4">
+                  <span id="chow-tai-fook-price" class="font-medium text-white">980.00</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="chow-tai-fook-change" class="text-danger">+5.00</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="chow-tai-fook-change-percent" class="text-danger">+0.51%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">10:00:00</td>
+              </tr>
+              <tr class="border-b border-gray-700">
+                <td class="py-3 px-4 font-medium text-white">老凤祥</td>
+                <td class="py-3 px-4">
+                  <span id="lao-feng-xiang-price" class="font-medium text-white">975.00</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="lao-feng-xiang-change" class="text-danger">+4.50</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="lao-feng-xiang-change-percent" class="text-danger">+0.46%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">10:00:00</td>
+              </tr>
+              <tr class="border-b border-gray-700">
+                <td class="py-3 px-4 font-medium text-white">周生生</td>
+                <td class="py-3 px-4">
+                  <span id="chow-sang-sang-price" class="font-medium text-white">978.00</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="chow-sang-sang-change" class="text-danger">+4.80</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="chow-sang-sang-change-percent" class="text-danger">+0.49%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">10:00:00</td>
+              </tr>
+              <tr class="border-b border-gray-700">
+                <td class="py-3 px-4 font-medium text-white">中国黄金</td>
+                <td class="py-3 px-4">
+                  <span id="china-gold-price" class="font-medium text-white">965.00</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="china-gold-change" class="text-danger">+3.20</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="china-gold-change-percent" class="text-danger">+0.33%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">10:00:00</td>
+              </tr>
+              <tr class="border-b border-gray-700 bank-row">
+                <td class="py-3 px-4 font-medium text-white">工商银行</td>
+                <td class="py-3 px-4">
+                  <span id="icbc-price" class="font-medium text-white">924.26</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="icbc-change" class="text-success">-7.60</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="icbc-change-percent" class="text-success">-0.82%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">13:12:00</td>
+              </tr>
+              <tr class="border-b border-gray-700 bank-row">
+                <td class="py-3 px-4 font-medium text-white">建设银行</td>
+                <td class="py-3 px-4">
+                  <span id="ccb-price" class="font-medium text-white">920.70</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="ccb-change" class="text-success">-10.60</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="ccb-change-percent" class="text-success">-1.15%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">13:12:00</td>
+              </tr>
+              <tr class="border-b border-gray-700 bank-row">
+                <td class="py-3 px-4 font-medium text-white">中国银行</td>
+                <td class="py-3 px-4">
+                  <span id="boc-price" class="font-medium text-white">921.47</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="boc-change" class="text-success">-7.20</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="boc-change-percent" class="text-success">-0.78%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">13:12:00</td>
+              </tr>
+              <tr class="bank-row">
+                <td class="py-3 px-4 font-medium text-white">农业银行</td>
+                <td class="py-3 px-4">
+                  <span id="abc-price" class="font-medium text-white">923.50</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="abc-change" class="text-success">-6.80</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span id="abc-change-percent" class="text-success">-0.73%</span>
+                </td>
+                <td class="py-3 px-4 text-gray-400">13:12:00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-gray-400">
+        <p>* 标蓝行表示银行金条价格，数据来源：各大银行官网及公开市场信息</p>
+      </div>
+    </section>
+    
+    <!-- 全球黄金市场热度 -->
+    <section class="mb-8">
+      <h2 class="text-xl font-bold text-white mb-4 flex items-center">
+        <i class="fa fa-fire mr-2 text-info"></i>
+        全球黄金市场热度
+      </h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card data-card">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-medium text-white">黄金ETF持仓量</h3>
+            <span class="text-xs text-gray-400">SPDR Gold Shares</span>
+          </div>
+          <div class="flex items-end justify-between">
+            <div>
+              <div class="text-2xl font-bold text-white">912.5</div>
+              <div class="text-xs text-gray-400">吨</div>
+            </div>
+            <div class="text-right">
+              <div id="etf-change-large" class="text-danger text-sm">+2.3吨</div>
+              <div class="text-xs text-gray-400">较上日</div>
+            </div>
+          </div>
+          <div class="mt-3 h-10">
+            <canvas id="etf-chart"></canvas>
+          </div>
+        </div>
+        
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card data-card">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-medium text-white">黄金搜索热度</h3>
+            <span class="text-xs text-gray-400">Google Trends</span>
+          </div>
+          <div class="flex items-end justify-between">
+            <div>
+              <div class="text-2xl font-bold text-white">68</div>
+              <div class="text-xs text-gray-400">指数</div>
+            </div>
+            <div class="text-right">
+              <div id="search-change" class="text-danger text-sm">+5</div>
+              <div class="text-xs text-gray-400">较上周</div>
+            </div>
+          </div>
+          <div class="mt-3 h-10">
+            <canvas id="search-chart"></canvas>
+          </div>
+        </div>
+        
+        <div class="bg-dark-200 bg-opacity-70 backdrop-blur-sm p-4 sharp-card data-card">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-medium text-white">黄金市场情绪</h3>
+            <span class="text-xs text-gray-400">综合指标</span>
+          </div>
+          <div class="flex items-center justify-center h-24">
+            <canvas id="sentiment-chart"></canvas>
+          </div>
+          <div class="text-center mt-2">
+            <span id="sentiment-value" class="text-warning font-medium">中性偏乐观</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="bg-dark-300 border-t border-gray-700 py-6">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between items-center">
+        <div class="mb-4 md:mb-0">
+          <div class="flex items-center space-x-2">
+            <i class="fa fa-line-chart text-primary text-xl"></i>
+            <h2 class="text-lg font-bold text-white">实时金价监测平台</h2>
+          </div>
+          <p class="text-sm text-gray-400 mt-1">提供全球黄金市场实时行情与专业分析</p>
+        </div>
+        
+        <div class="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-6">
+          <div class="text-center md:text-right">
+            <p class="text-sm text-gray-400">数据来源</p>
+            <p class="text-xs text-gray-500">上海黄金交易所、伦敦金银市场协会、各大金店品牌</p>
+          </div>
+          
+          <div class="w-full md:w-auto h-px bg-gray-700 md:hidden"></div>
+          
+          <div class="text-center md:text-right">
+            <p class="text-sm text-gray-400">更新频率</p>
+            <p class="text-xs text-gray-500">每2秒自动刷新一次</p>
+          </div>
+          
+          <div class="w-full md:w-auto h-px bg-gray-700 md:hidden"></div>
+          
+          <div class="text-center md:text-right">
+            <p class="text-sm text-gray-400">最后更新</p>
+            <p id="footer-update-time" class="text-xs text-gray-500">2025-10-29 10:56:27</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="mt-6 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
+        <p>© 2025 实时金价监测平台 - 深色数据看板版 | 仅供参考，非投资建议</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 粒子背景JS -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const canvas = document.createElement('canvas');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      document.getElementById('particleBackground').appendChild(canvas);
+
+      const ctx = canvas.getContext('2d');
+      const particles = [];
+      const particleCount = 100;
+
+      // 创建粒子
+      for (let i = 0; i < particleCount; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 2 + 1,
+          color: `rgba(${Math.floor(Math.random()*80+180)}, ${Math.floor(Math.random()*80+180)}, ${Math.floor(Math.random()*80+180)}, 0.5)`,
+          speedX: Math.random() * 0.5 - 0.25,
+          speedY: Math.random() * 0.5 - 0.25
+        });
+      }
+
+      // 鼠标位置追踪
+      let mouseX = 0, mouseY = 0;
+      document.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      });
+
+      // 动画循环
+      function animate() {
+        requestAnimationFrame(animate);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+        particles.forEach(p => {
+          // 更新位置
+          p.x += p.speedX;
+          p.y += p.speedY;
+        
+          // 边界检查
+          if (p.x > canvas.width) p.x = 0;
+          if (p.x < 0) p.x = canvas.width;
+          if (p.y > canvas.height) p.y = 0;
+          if (p.y < 0) p.y = canvas.height;
+        
+          // 鼠标交互 - 靠近鼠标的粒子微微偏移
+          const dx = p.x - mouseX;
+          const dy = p.y - mouseY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 100) {
+            p.x += dx * 0.01;
+            p.y += dy * 0.01;
+          }
+        
+          // 绘制粒子
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+        });
+      
+        // 连接临近粒子
+        connectParticles();
+      }
+
+      // 连接临近的粒子
+      function connectParticles() {
+        for (let i = 0; i < particles.length; i++) {
+          for (let j = i + 1; j < particles.length; j++) {
+            const dx = particles[i].x - particles[j].x;
+            const dy = particles[i].y - particles[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+          
+            if (dist < 120) {
+              ctx.beginPath();
+              ctx.strokeStyle = `rgba(59, 130, 246, ${0.2 * (1 - dist/120)})`;
+              ctx.lineWidth = 0.5;
+              ctx.moveTo(particles[i].x, particles[i].y);
+              ctx.lineTo(particles[j].x, particles[j].y);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      // 启动动画
+      animate();
+
+      // 响应窗口大小变化
+      window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      });
+    });
+  </script>
+
+  <!-- 主要JS -->
+  <script>
+    // 全局变量
+    let priceChart;
+    let etfMiniChart;
+    let etfChart;
+    let searchChart;
+    let sentimentChart;
+    let autoRefreshInterval;
+    let currentTimePeriod = 'day';
+    let currentGoldType = 'auTD'; // 'auTD' 或 'londonGold'
+    let isAutoRefreshEnabled = true;
+    
+    // 历史数据 - 实际应用中应从API获取
+    const historicalData = {
+      auTD: {
+        day: {
+          labels: ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '13:30', '14:00', '14:30', '15:00', '20:00', '20:30', '21:00', '21:30', '22:00'],
+          prices: [895.80, 897.20, 899.50, 901.80, 903.20, 902.50, 904.30, 905.10, 906.70, 907.22, 906.80, 905.90, 906.50, 907.00, 907.22]
+        },
+        week: {
+          labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+          prices: [880.50, 885.20, 890.70, 893.40, 896.69, 902.30, 907.22]
+        },
+        month: {
+          labels: ['1周', '2周', '3周', '4周'],
+          prices: [870.30, 882.60, 891.40, 907.22]
+        },
+        year: {
+          labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月'],
+          prices: [820.50, 835.20, 842.70, 853.40, 866.60, 875.30, 882.10, 888.90, 896.69, 907.22]
+        }
+      },
+      londonGold: {
+        day: {
+          labels: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'],
+          prices: [3920.50, 3918.20, 3916.56, 3925.30, 3935.70, 3942.10, 3948.50, 3955.33, 3960.20, 3965.80, 3963.21, 3963.21]
+        },
+        week: {
+          labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+          prices: [3880.50, 3895.20, 3910.70, 3930.40, 3950.60, 3958.30, 3963.21]
+        },
+        month: {
+          labels: ['1周', '2周', '3周', '4周'],
+          prices: [3850.30, 3890.60, 3930.40, 3963.21]
+        },
+        year: {
+          labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月'],
+          prices: [3720.50, 3760.20, 3790.70, 3820.40, 3850.60, 3880.30, 3900.10, 3920.90, 3940.60, 3963.21]
+        }
+      },
+      etfHoldings: {
+        day: [910.2, 910.5, 910.8, 911.1, 911.5, 911.8, 912.0, 912.2, 912.5],
+        week: [905.2, 906.5, 907.8, 909.1, 910.5, 911.8, 912.5],
+        month: [895.2, 900.5, 905.8, 912.5],
+        year: [880.2, 885.5, 890.8, 895.1, 898.5, 902.8, 905.0, 907.2, 910.5, 912.5]
+      }
+    };
+    
+    // 实物黄金价格数据
+    const physicalGoldPrices = {
+      'chow-tai-fook': { price: 980.00, change: 5.00, changePercent: 0.51 },
+      'lao-feng-xiang': { price: 975.00, change: 4.50, changePercent: 0.46 },
+      'chow-sang-sang': { price: 978.00, change: 4.80, changePercent: 0.49 },
+      'china-gold': { price: 965.00, change: 3.20, changePercent: 0.33 },
+      'icbc': { price: 924.26, change: -7.60, changePercent: -0.82 },
+      'ccb': { price: 920.70, change: -10.60, changePercent: -1.15 },
+      'boc': { price: 921.47, change: -7.20, changePercent: -0.78 },
+      'abc': { price: 923.50, change: -6.80, changePercent: -0.73 }
+    };
+    
+    // 黄金ETF持仓数据
+    const etfData = {
+      current: 912.5,
+      change: 2.3,
+      history: [905.2, 906.5, 907.8, 909.1, 910.5, 911.8, 912.5]
+    };
+    
+    // 黄金搜索热度数据
+    const searchData = {
+      current: 68,
+      change: 5,
+      history: [55, 58, 60, 62, 63, 65, 68]
+    };
+    
+    // 市场情绪数据
+    const sentimentData = {
+      value: 65, // 0-100，50为中性
+      history: [50, 52, 55, 58, 60, 63, 65]
+    };
+    
+    // DOM加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      initCharts();
+      setupEventListeners();
+      startAutoRefresh();
+      updateLastUpdateTime();
+    });
+    
+    // 初始化所有图表
+    function initCharts() {
+      initPriceChart();
+      initEtfMiniChart();
+      initEtfChart();
+      initSearchChart();
+      initSentimentChart();
+    }
+    
+    // 初始化价格走势图
+    function initPriceChart() {
+      const ctx = document.getElementById('price-chart').getContext('2d');
+      
+      priceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: historicalData.auTD.day.labels,
+          datasets: [{
+            label: '黄金T+D',
+            data: historicalData.auTD.day.prices,
+            borderColor: '#FFD700',
+            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+            borderWidth: 2,
+            pointBackgroundColor: '#FFD700',
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            tension: 0.4,
+            fill: true
+          }, {
+            label: '伦敦金',
+            data: historicalData.londonGold.day.prices,
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            pointBackgroundColor: '#3B82F6',
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            tension: 0.4,
+            fill: true,
+            hidden: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.9)',
+              titleColor: '#E2E8F0',
+              bodyColor: '#E2E8F0',
+              borderColor: '#3B82F6',
+              borderWidth: 1,
+              padding: 10,
+              displayColors: true,
+              callbacks: {
+                label: function(context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  if (context.parsed.y !== null) {
+                    label += context.parsed.y.toFixed(2) + ' 元/克';
+                  }
+                  return label;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: {
+                color: 'rgba(75, 85, 99, 0.2)'
+              },
+              ticks: {
+                color: '#94A3B8'
+              }
+            },
+            y: {
+              grid: {
+                color: 'rgba(75, 85, 99, 0.2)'
+              },
+              ticks: {
+                color: '#94A3B8',
+                callback: function(value) {
+                  return value.toFixed(0);
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+    
+    // 初始化ETF迷你图表
+    function initEtfMiniChart() {
+      const ctx = document.getElementById('etf-mini-chart').getContext('2d');
+      
+      etfMiniChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: Array(historicalData.etfHoldings.day.length).fill(''),
+          datasets: [{
+            data: historicalData.etfHoldings.day,
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              enabled: false
+            }
+          },
+          scales: {
+            x: {
+              display: false
+            },
+            y: {
+              display: false
+            }
+          },
+          elements: {
+            line: {
+              tension: 0.4
+            }
+          }
+        }
+      });
+    }
+    
+    // 初始化ETF图表
+    function initEtfChart() {
+      const ctx = document.getElementById('etf-chart').getContext('2d');
+      
+      etfChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: Array(etfData.history.length).fill(''),
+          datasets: [{
+            data: etfData.history,
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              enabled: false
+            }
+          },
+          scales: {
+            x: {
+              display: false
+            },
+            y: {
+              display: false
+            }
+          }
+        }
+      });
+    }
+    
+    // 初始化搜索热度图表
+    function initSearchChart() {
+      const ctx = document.getElementById('search-chart').getContext('2d');
+      
+      searchChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: Array(searchData.history.length).fill(''),
+          datasets: [{
+            data: searchData.history,
+            borderColor: '#F59E0B',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              enabled: false
+            }
+          },
+          scales: {
+            x: {
+              display: false
+            },
+            y: {
+              display: false
+            }
+          }
+        }
+      });
+    }
+    
+    // 初始化市场情绪图表
+    function initSentimentChart() {
+      const ctx = document.getElementById('sentiment-chart').getContext('2d');
+      
+      sentimentChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['看涨', '看跌'],
+          datasets: [{
+            data: [sentimentData.value, 100 - sentimentData.value],
+            backgroundColor: [
+              getGradient(ctx, [
+                { percent: 0, color: '#3B82F6' },
+                { percent: 1, color: '#60A5FA' }
+              ]),
+              'rgba(75, 85, 99, 0.2)'
+            ],
+            borderColor: 'rgba(30, 41, 59, 0.5)',
+            borderWidth: 2,
+            cutout: '70%'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              enabled: false
+            }
+          }
+        }
+      });
+    }
+    
+    // 创建渐变
+    function getGradient(ctx, colorStops) {
+      const gradient = ctx.createLinearGradient(0, 0, 200, 0);
+      colorStops.forEach(stop => {
+        gradient.addColorStop(stop.percent, stop.color);
+      });
+      return gradient;
+    }
+    
+    // 设置事件监听器
+    function setupEventListeners() {
+      // 刷新按钮点击事件
+      document.getElementById('refresh-btn').addEventListener('click', function() {
+        refreshData();
+      });
+      
+      // 自动刷新开关切换事件
+      document.getElementById('auto-refresh-toggle').addEventListener('change', function() {
+        isAutoRefreshEnabled = this.checked;
+        if (isAutoRefreshEnabled) {
+          startAutoRefresh();
+        } else {
+          stopAutoRefresh();
+        }
+      });
+      
+      // 时间筛选按钮点击事件
+      document.querySelectorAll('.time-filter').forEach(button => {
+        button.addEventListener('click', function() {
+          const period = this.getAttribute('data-period');
+          changeTimePeriod(period);
+          
+          // 更新按钮样式
+          document.querySelectorAll('.time-filter').forEach(btn => {
+            btn.classList.remove('bg-info', 'text-white', 'border-blue-500');
+            btn.classList.add('bg-dark-100', 'text-gray-300', 'border-gray-700');
+          });
+          this.classList.remove('bg-dark-100', 'text-gray-300', 'border-gray-700');
+          this.classList.add('bg-info', 'text-white', 'border-blue-500');
+        });
+      });
+      
+      // 黄金类型切换按钮点击事件
+      document.getElementById('btn-auTD').addEventListener('click', function() {
+        currentGoldType = 'auTD';
+        updateGoldTypeDisplay();
+        updatePriceChart();
+      });
+      
+      document.getElementById('btn-londonGold').addEventListener('click', function() {
+        currentGoldType = 'londonGold';
+        updateGoldTypeDisplay();
+        updatePriceChart();
+      });
+    }
+    
+    // 开始自动刷新
+    function startAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+      }
+      
+      autoRefreshInterval = setInterval(function() {
+        refreshData();
+      }, 2000); // 每2秒刷新一次
+    }
+    
+    // 停止自动刷新
+    function stopAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+      }
+    }
+    
+    // 刷新数据
+    function refreshData() {
+      // 模拟数据更新
+      updateGoldPrices();
+      updatePhysicalGoldPrices();
+      updateEtfData();
+      updateSearchData();
+      updateSentimentData();
+      
+      // 更新最后更新时间
+      updateLastUpdateTime();
+    }
+    
+    // 更新黄金价格
+    function updateGoldPrices() {
+      // 黄金T+D价格更新
+      const auTdPriceElement = document.getElementById('au-td-price');
+      const auTdChangeElement = document.getElementById('au-td-change');
+      const auTdChangePercentElement = document.getElementById('au-td-change-percent');
+      
+      const oldAuTdPrice = parseFloat(auTdPriceElement.textContent);
+      const randomChange = (Math.random() * 0.6 - 0.3).toFixed(2); // -0.3 到 0.3 的随机变化
+      const newAuTdPrice = (oldAuTdPrice + parseFloat(randomChange)).toFixed(2);
+      const newAuTdChange = (parseFloat(newAuTdPrice) - 896.69).toFixed(2); // 相对于昨结算价的变化
+      const newAuTdChangePercent = ((newAuTdChange / 896.69) * 100).toFixed(2);
+      
+      // 更新显示
+      updatePriceDisplay(auTdPriceElement, oldAuTdPrice, parseFloat(newAuTdPrice));
+      updateChangeDisplay(auTdChangeElement, parseFloat(newAuTdChange));
+      updateChangePercentDisplay(auTdChangePercentElement, parseFloat(newAuTdChangePercent));
+      
+      // 更新时间
+      document.getElementById('au-td-time').textContent = getCurrentTime();
+      
+      // 伦敦金价格更新
+      const londonGoldPriceElement = document.getElementById('london-gold-price');
+      const londonGoldChangeElement = document.getElementById('london-gold-change');
+      const londonGoldChangePercentElement = document.getElementById('london-gold-change-percent');
+      
+      const oldLondonGoldPrice = parseFloat(londonGoldPriceElement.textContent);
+      const randomLondonChange = (Math.random() * 1.2 - 0.6).toFixed(2); // -0.6 到 0.6 的随机变化
+      const newLondonGoldPrice = (oldLondonGoldPrice + parseFloat(randomLondonChange)).toFixed(2);
+      const newLondonGoldChange = (parseFloat(newLondonGoldPrice) - 3953.44).toFixed(2); // 相对于昨结算价的变化
+      const newLondonGoldChangePercent = ((newLondonGoldChange / 3953.44) * 100).toFixed(2);
+      
+      // 更新显示
+      updatePriceDisplay(londonGoldPriceElement, oldLondonGoldPrice, parseFloat(newLondonGoldPrice));
+      updateChangeDisplay(londonGoldChangeElement, parseFloat(newLondonGoldChange));
+      updateChangePercentDisplay(londonGoldChangePercentElement, parseFloat(newLondonGoldChangePercent));
+      
+      // 更新美元/盎司价格
+      const londonGoldUsd = (parseFloat(newLondonGoldPrice) * 0.00205).toFixed(2);
+      document.getElementById('london-gold-usd').textContent = londonGoldUsd;
+      
+      // 更新时间
+      document.getElementById('london-gold-time').textContent = getCurrentTime();
+      
+      // 更新图表
+      updatePriceChart();
+    }
+    
+    // 更新价格显示
+    function updatePriceDisplay(element, oldPrice, newPrice) {
+      // 添加闪烁效果
+      if (newPrice > oldPrice) {
+        element.classList.add('price-flash-up');
+        setTimeout(() => {
+          element.classList.remove('price-flash-up');
+        }, 500);
+      } else if (newPrice < oldPrice) {
+        element.classList.add('price-flash-down');
+        setTimeout(() => {
+          element.classList.remove('price-flash-down');
+        }, 500);
+      }
+      
+      // 更新价格并添加动画
+      element.textContent = newPrice.toFixed(2);
+      
+      if (newPrice > oldPrice) {
+        element.classList.add('price-change-up');
+        setTimeout(() => {
+          element.classList.remove('price-change-up');
+        }, 500);
+      } else if (newPrice < oldPrice) {
+        element.classList.add('price-change-down');
+        setTimeout(() => {
+          element.classList.remove('price-change-down');
+        }, 500);
+      }
+    }
+    
+    // 更新涨跌显示
+    function updateChangeDisplay(element, change) {
+      element.innerHTML = '';
+      
+      if (change > 0) {
+        element.classList.remove('text-success');
+        element.classList.add('text-danger');
+        element.innerHTML = `<i class="fa fa-caret-up mr-1"></i><span>${Math.abs(change).toFixed(2)}</span>`;
+      } else if (change < 0) {
+        element.classList.remove('text-danger');
+        element.classList.add('text-success');
+        element.innerHTML = `<i class="fa fa-caret-down mr-1"></i><span>${Math.abs(change).toFixed(2)}</span>`;
+      } else {
+        element.classList.remove('text-danger', 'text-success');
+        element.innerHTML = `<span>${change.toFixed(2)}</span>`;
+      }
+    }
+    
+    // 更新涨跌幅显示
+    function updateChangePercentDisplay(element, changePercent) {
+      if (changePercent > 0) {
+        element.classList.remove('text-success');
+        element.classList.add('text-danger');
+        element.textContent = `+${changePercent.toFixed(2)}%`;
+      } else if (changePercent < 0) {
+        element.classList.remove('text-danger');
+        element.classList.add('text-success');
+        element.textContent = `${changePercent.toFixed(2)}%`;
+      } else {
+        element.classList.remove('text-danger', 'text-success');
+        element.textContent = `${changePercent.toFixed(2)}%`;
+      }
+    }
+    
+    // 更新实物黄金价格
+    function updatePhysicalGoldPrices() {
+      for (const [id, data] of Object.entries(physicalGoldPrices)) {
+        const priceElement = document.getElementById(`${id}-price`);
+        const changeElement = document.getElementById(`${id}-change`);
+        const changePercentElement = document.getElementById(`${id}-change-percent`);
+        
+        const oldPrice = parseFloat(priceElement.textContent);
+        const randomFactor = id.includes('bank') ? 0.4 : 0.8; // 银行价格波动较小
+        const randomChange = (Math.random() * randomFactor - randomFactor/2).toFixed(2);
+        const newPrice = (oldPrice + parseFloat(randomChange)).toFixed(2);
+        const newChange = (parseFloat(newPrice) - (oldPrice - data.change)).toFixed(2);
+        const newChangePercent = ((newChange / (oldPrice - data.change)) * 100).toFixed(2);
+        
+        // 更新显示
+        updatePriceDisplay(priceElement, oldPrice, parseFloat(newPrice));
+        updateChangeDisplay(changeElement, parseFloat(newChange));
+        updateChangePercentDisplay(changePercentElement, parseFloat(newChangePercent));
+        
+        // 更新数据
+        physicalGoldPrices[id].price = parseFloat(newPrice);
+        physicalGoldPrices[id].change = parseFloat(newChange);
+        physicalGoldPrices[id].changePercent = parseFloat(newChangePercent);
+      }
+    }
+    
+    // 更新ETF数据
+    function updateEtfData() {
+      const etfHoldingsElement = document.getElementById('etf-holdings');
+      const etfChangeElement = document.getElementById('etf-change');
+      const etfChangeLargeElement = document.getElementById('etf-change-large');
+      
+      const oldHoldings = parseFloat(etfHoldingsElement.textContent);
+      const randomChange = (Math.random() * 0.4 - 0.2).toFixed(1); // -0.2 到 0.2 的随机变化
+      const newHoldings = (oldHoldings + parseFloat(randomChange)).toFixed(1);
+      const newChange = (parseFloat(newHoldings) - 910.2).toFixed(1); // 相对于初始值的变化
+      
+      // 更新显示
+      etfHoldingsElement.textContent = newHoldings;
+      
+      if (parseFloat(newChange) > 0) {
+        etfChangeElement.classList.remove('text-success');
+        etfChangeElement.classList.add('text-danger');
+        etfChangeElement.innerHTML = `<i class="fa fa-caret-up mr-1"></i><span>${Math.abs(parseFloat(newChange)).toFixed(1)}</span>`;
+        
+        etfChangeLargeElement.classList.remove('text-success');
+        etfChangeLargeElement.classList.add('text-danger');
+        etfChangeLargeElement.textContent = `+${Math.abs(parseFloat(newChange)).toFixed(1)}吨`;
+      } else if (parseFloat(newChange) < 0) {
+        etfChangeElement.classList.remove('text-danger');
+        etfChangeElement.classList.add('text-success');
+        etfChangeElement.innerHTML = `<i class="fa fa-caret-down mr-1"></i><span>${Math.abs(parseFloat(newChange)).toFixed(1)}</span>`;
+        
+        etfChangeLargeElement.classList.remove('text-danger');
+        etfChangeLargeElement.classList.add('text-success');
+        etfChangeLargeElement.textContent = `${parseFloat(newChange).toFixed(1)}吨`;
+      } else {
+        etfChangeElement.classList.remove('text-danger', 'text-success');
+        etfChangeElement.innerHTML = `<span>${parseFloat(newChange).toFixed(1)}</span>`;
+        
+        etfChangeLargeElement.classList.remove('text-danger', 'text-success');
+        etfChangeLargeElement.textContent = `${parseFloat(newChange).toFixed(1)}吨`;
+      }
+      
+      // 更新图表
+      etfData.current = parseFloat(newHoldings);
+      etfData.change = parseFloat(newChange);
+      etfData.history.push(parseFloat(newHoldings));
+      etfData.history.shift();
+      
+      etfChart.data.datasets[0].data = etfData.history;
+      etfChart.update();
+      
+      etfMiniChart.data.datasets[0].data = historicalData.etfHoldings[currentTimePeriod];
+      etfMiniChart.update();
+    }
+    
+    // 更新搜索热度数据
+    function updateSearchData() {
+      const searchChangeElement = document.getElementById('search-change');
+      
+      const randomChange = Math.floor(Math.random() * 3) - 1; // -1 到 2 的随机变化
+      const newChange = searchData.change + randomChange;
+      
+      // 更新显示
+      if (newChange > 0) {
+        searchChangeElement.classList.remove('text-success');
+        searchChangeElement.classList.add('text-danger');
+        searchChangeElement.textContent = `+${newChange}`;
+      } else if (newChange < 0) {
+        searchChangeElement.classList.remove('text-danger');
+        searchChangeElement.classList.add('text-success');
+        searchChangeElement.textContent = `${newChange}`;
+      } else {
+        searchChangeElement.classList.remove('text-danger', 'text-success');
+        searchChangeElement.textContent = `${newChange}`;
+      }
+      
+      // 更新数据
+      searchData.change = newChange;
+      searchData.current += randomChange;
+      searchData.history.push(searchData.current);
+      searchData.history.shift();
+      
+      // 更新图表
+      searchChart.data.datasets[0].data = searchData.history;
+      searchChart.update();
+    }
+    
+    // 更新市场情绪数据
+    function updateSentimentData() {
+      const sentimentValueElement = document.getElementById('sentiment-value');
+      
+      const randomChange = Math.floor(Math.random() * 5) - 2; // -2 到 3 的随机变化
+      let newValue = sentimentData.value + randomChange;
+      
+      // 确保值在0-100之间
+      newValue = Math.max(0, Math.min(100, newValue));
+      
+      // 更新显示
+      let sentimentText = '';
+      if (newValue >= 70) {
+        sentimentText = '极度乐观';
+        sentimentValueElement.className = 'text-danger font-medium';
+      } else if (newValue >= 60) {
+        sentimentText = '乐观';
+        sentimentValueElement.className = 'text-danger font-medium';
+      } else if (newValue >= 55) {
+        sentimentText = '中性偏乐观';
+        sentimentValueElement.className = 'text-warning font-medium';
+      } else if (newValue >= 45) {
+        sentimentText = '中性';
+        sentimentValueElement.className = 'text-gray-300 font-medium';
+      } else if (newValue >= 40) {
+        sentimentText = '中性偏悲观';
+        sentimentValueElement.className = 'text-warning font-medium';
+      } else if (newValue >= 30) {
+        sentimentText = '悲观';
+        sentimentValueElement.className = 'text-success font-medium';
+      } else {
+        sentimentText = '极度悲观';
+        sentimentValueElement.className = 'text-success font-medium';
+      }
+      
+      sentimentValueElement.textContent = sentimentText;
+      
+      // 更新数据
+      sentimentData.value = newValue;
+      sentimentData.history.push(newValue);
+      sentimentData.history.shift();
+      
+      // 更新图表
+      sentimentChart.data.datasets[0].data = [newValue, 100 - newValue];
+      sentimentChart.update();
+    }
+    
+    // 更新价格图表
+    function updatePriceChart() {
+      priceChart.data.labels = historicalData[currentGoldType][currentTimePeriod].labels;
+      priceChart.data.datasets[0].data = historicalData[currentGoldType][currentTimePeriod].prices;
+      priceChart.update();
+    }
+    
+    // 更改时间周期
+    function changeTimePeriod(period) {
+      currentTimePeriod = period;
+      updatePriceChart();
+      
+      // 更新ETF迷你图表
+      etfMiniChart.data.datasets[0].data = historicalData.etfHoldings[period];
+      etfMiniChart.update();
+    }
+    
+    // 更新黄金类型显示
+    function updateGoldTypeDisplay() {
+      if (currentGoldType === 'auTD') {
+        document.getElementById('btn-auTD').classList.remove('bg-dark-100', 'text-gray-300', 'border-gray-700');
+        document.getElementById('btn-auTD').classList.add('bg-primary', 'text-dark-400', 'border-amber-500');
+        
+        document.getElementById('btn-londonGold').classList.remove('bg-primary', 'text-dark-400', 'border-amber-500');
+        document.getElementById('btn-londonGold').classList.add('bg-dark-100', 'text-gray-300', 'border-gray-700');
+        
+        priceChart.data.datasets[0].hidden = false;
+        priceChart.data.datasets[1].hidden = true;
+      } else {
+        document.getElementById('btn-londonGold').classList.remove('bg-dark-100', 'text-gray-300', 'border-gray-700');
+        document.getElementById('btn-londonGold').classList.add('bg-primary', 'text-dark-400', 'border-amber-500');
+        
+        document.getElementById('btn-auTD').classList.remove('bg-primary', 'text-dark-400', 'border-amber-500');
+        document.getElementById('btn-auTD').classList.add('bg-dark-100', 'text-gray-300', 'border-gray-700');
+        
+        priceChart.data.datasets[0].hidden = true;
+        priceChart.data.datasets[1].hidden = false;
+      }
+      
+      priceChart.update();
+    }
+    
+    // 更新最后更新时间
+    function updateLastUpdateTime() {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('zh-CN');
+      const dateString = now.toLocaleDateString('zh-CN');
+      const fullTimeString = `${dateString} ${timeString}`;
+      
+      document.getElementById('last-update-time').textContent = `最后更新: ${fullTimeString}`;
+      document.getElementById('chart-update-time').textContent = `最后更新: ${fullTimeString}`;
+      document.getElementById('footer-update-time').textContent = fullTimeString;
+    }
+    
+    // 获取当前时间
+    function getCurrentTime() {
+      const now = new Date();
+      return now.toLocaleTimeString('zh-CN');
+    }
+  </script>
+</body>
+</html>
